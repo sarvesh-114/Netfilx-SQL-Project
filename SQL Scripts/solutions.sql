@@ -1,169 +1,95 @@
 -- Netflix Data Analysis using SQL
 -- Solutions of 15 business problems
--- 1. Count the number of Movies vs TV Shows
+-- 1. Count the number of movies and Tv Shows
 
-SELECT 
-	type,
-	COUNT(*)
-FROM netflix
-GROUP BY 1
+select count(type) as Total_Movies
+from netflix
+where type = 'Movie'
 
--- 2. Find the most common rating for movies and TV shows
+select count(type) as Total_TV_Shows
+from netflix
+where type = 'TV Show'
 
-WITH RatingCounts AS (
-    SELECT 
-        type,
-        rating,
-        COUNT(*) AS rating_count
-    FROM netflix
-    GROUP BY type, rating
-),
-RankedRatings AS (
-    SELECT 
-        type,
-        rating,
-        rating_count,
-        RANK() OVER (PARTITION BY type ORDER BY rating_count DESC) AS rank
-    FROM RatingCounts
-)
-SELECT 
-    type,
-    rating AS most_frequent_rating
-FROM RankedRatings
-WHERE rank = 1;
+-- or
 
+select type, count(*) as total_content
+from netflix
+group by type
 
--- 3. List all movies released in a specific year (e.g., 2020)
+-- 2. Common rating for both type
+select type, rating from (select
+type,
+rating,
+count(*) as total_count,
+rank() over(partition by type order by count(*) desc) as ranks
+from netflix
+group by 1, 2) as s1 where ranks = 1
 
-SELECT * 
-FROM netflix
-WHERE release_year = 2020
+-- list all the movies released in specific year
+select type, title, release_year
+from netflix
+where type = 'Movie' and release_year in (2020, 2021)
 
+-- list top 5 countries who has mpst content on linked in
+select unnest(string_to_array(country, ',')) as country, count(*) as total_content
+from netflix
+group by country
+order by total_content desc
+limit 5
 
--- 4. Find the top 5 countries with the most content on Netflix
+-- Identify the logest movie
+select *
+from netflix 
+where type = 'Movie'
+and duration = (select max(duration) from netflix)
 
-SELECT * 
-FROM
-(
-	SELECT 
-		-- country,
-		UNNEST(STRING_TO_ARRAY(country, ',')) as country,
-		COUNT(*) as total_content
-	FROM netflix
-	GROUP BY 1
-)as t1
-WHERE country IS NOT NULL
-ORDER BY total_content DESC
-LIMIT 5
+--find the content that added in last 5 years
+select *
+from netflix
+where to_date(date_added, 'Month DD, YYYY') >= current_date - interval '5 years';
 
+-- find all movies TVshows directed by rajiv chikala
+select type, title, unnest(string_to_array(director, ',')) as director
+from netflix
+where director = 'Rajiv Chilaka'
 
--- 5. Identify the longest movie
+-- TV Shows with more than 5 seasons
+select *
+from netflix
+where type = 'TV Shows'
+and split_part(duration, ' ', 1):: numeric > 5 
 
-SELECT 
-	*
-FROM netflix
-WHERE type = 'Movie'
-ORDER BY SPLIT_PART(duration, ' ', 1)::INT DESC
+-- count the number of conten items based on the genre
+select unnest(string_to_array(listed_in, ',')) as genre, count(*) as total_content
+from netflix
+group by genre
+order by total_content desc;
 
+--Find each year and the average numbers of content release in India on netflix. 
+--return top 5 year with highest avg content release!
+select
+extract(year from to_date(date_added, 'Month DD, YYYY')) as year, 
+count(*),
+round(count(*)::numeric / (select count(*) from netflix where country = 'India')::numeric * 100, 0) as Average_content
+from netflix
+where country = 'India'
+group by year;
 
--- 6. Find content added in the last 5 years
-SELECT
-*
-FROM netflix
-WHERE TO_DATE(date_added, 'Month DD, YYYY') >= CURRENT_DATE - INTERVAL '5 years'
+--List all movies that are documentaries
+select type, title, unnest(string_to_array(listed_in, ',')) as genre
+from netflix
+where type = 'Movie' and listed_in = 'Documentaries'
 
+-- Find all content without a director
+select * from netflix 
+where director is null
 
--- 7. Find all the movies/TV shows by director 'Rajiv Chilaka'!
+--Find how many movies actor 'Salman Khan' appeared in last 10 years
+select count(*)
+from netflix
+where casts like '%Salman Khan%' and
+to_date(date_added, 'Month DD, YYYY') >= current_date - interval '10 years';
 
-SELECT *
-FROM
-(
-
-SELECT 
-	*,
-	UNNEST(STRING_TO_ARRAY(director, ',')) as director_name
-FROM 
-netflix
-)
-WHERE 
-	director_name = 'Rajiv Chilaka'
-
-
-
--- 8. List all TV shows with more than 5 seasons
-
-SELECT *
-FROM netflix
-WHERE 
-	TYPE = 'TV Show'
-	AND
-	SPLIT_PART(duration, ' ', 1)::INT > 5
-
-
--- 9. Count the number of content items in each genre
-
-SELECT 
-	UNNEST(STRING_TO_ARRAY(listed_in, ',')) as genre,
-	COUNT(*) as total_content
-FROM netflix
-GROUP BY 1
-
-
--- 10. Find each year and the average numbers of content release by India on netflix. 
--- return top 5 year with highest avg content release !
-
-
-SELECT 
-	country,
-	release_year,
-	COUNT(show_id) as total_release,
-	ROUND(
-		COUNT(show_id)::numeric/
-								(SELECT COUNT(show_id) FROM netflix WHERE country = 'India')::numeric * 100 
-		,2
-		)
-		as avg_release
-FROM netflix
-WHERE country = 'India' 
-GROUP BY country, 2
-ORDER BY avg_release DESC 
-LIMIT 5
-
-
--- 11. List all movies that are documentaries
-SELECT * FROM netflix
-WHERE listed_in LIKE '%Documentaries'
-
-
-
--- 12. Find all content without a director
-SELECT * FROM netflix
-WHERE director IS NULL
-
-
--- 13. Find how many movies actor 'Salman Khan' appeared in last 10 years!
-
-SELECT * FROM netflix
-WHERE 
-	casts LIKE '%Salman Khan%'
-	AND 
-	release_year > EXTRACT(YEAR FROM CURRENT_DATE) - 10
-
-
--- 14. Find the top 10 actors who have appeared in the highest number of movies produced in India.
-
-
-
-SELECT 
-	UNNEST(STRING_TO_ARRAY(casts, ',')) as actor,
-	COUNT(*)
-FROM netflix
-WHERE country = 'India'
-GROUP BY 1
-ORDER BY 2 DESC
-LIMIT 10
-
-/*
 Question 15:
 Categorize the content based on the presence of the keywords 'kill' and 'violence' in 
 the description field. Label content containing these keywords as 'Bad' and all other 
